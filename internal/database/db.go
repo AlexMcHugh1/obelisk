@@ -1,11 +1,11 @@
-package db
+package database
 
 import (
 	"database/sql"
 	"fmt"
-	_"github.com/lib/pq"
+	"obelisk/internal/models"
+	_ "github.com/lib/pq"
 )
-
 const (
 	host	="127.0.0.1"
 	port	= 5432
@@ -15,19 +15,26 @@ const (
 	sslmode	= "disable"
 )
 
-// initialise the connection pool and return it for use in main.go
+// Insert a new user into the database
+func CreateUser(db *sql.DB, user models.User) error {
+	query := `INSERT INTO users (username, password_hash, role) VALUES ($1, $2, $3)`
+	_, err := db.Exec(query, user.Username, user.PasswordHash, user.Role)
+	return err
+}
+
+// Initialise the connection pool and return it for use in main.go
 func InitDB() (*sql.DB, error) {
 	// format the connection string
 	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
 		host, port, user, password, dbname, sslmode)
 		
-	// open the connection pool
+	// Open the connection pool
 	db, err := sql.Open("postgres", psqlInfo)
 	if err != nil {
 		return nil, err
 	}
 
-	// verify the connection is active
+	// Verify the connection is active
 	err = db.Ping()
 	if err != nil {
 		return nil, err
@@ -66,3 +73,5 @@ func Migrate(db *sql.DB) error {
 	_, err := db.Exec(schema)
 	return err
 }
+
+
