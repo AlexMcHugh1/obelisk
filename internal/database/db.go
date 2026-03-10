@@ -11,7 +11,7 @@ const (
 	port	= 5432
 	user	= "devuser"
 	password	= "devpassword"
-	dbname	= "pdfvault"
+	dbname	= "obelisk"
 	sslmode	= "disable"
 )
 
