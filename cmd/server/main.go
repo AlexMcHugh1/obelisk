@@ -1,14 +1,18 @@
 package main
 
 import (
-    "log"
-    "obelisk/internal/database"
+	"fmt"
+	"log"
+	"obelisk/internal/database"
 )
 
 func main() {
-    db, err := database.InitDB()
-    if err != nil {
-        log.Fatal(err)
-    }
-    defer db.Close()
+	// Change 'database.InitDB()' to 'db.InitDB()'
+	conn, err := db.InitDB() 
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer conn.Close()
+
+	fmt.Println("Obelisk is online and connected to the database.")
 }
