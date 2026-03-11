@@ -4,15 +4,17 @@ import (
 	"database/sql"
 	"fmt"
 	"obelisk/internal/models"
+
 	_ "github.com/lib/pq"
 )
+
 const (
-	host	="127.0.0.1"
-	port	= 5432
-	user	= "devuser"
-	password	= "devpassword"
-	dbname	= "obelisk"
-	sslmode	= "disable"
+	host     = "127.0.0.1"
+	port     = 5432
+	user     = "devuser"
+	password = "devpassword"
+	dbname   = "obelisk"
+	sslmode  = "disable"
 )
 
 // Insert a new user into the database
@@ -27,7 +29,7 @@ func InitDB() (*sql.DB, error) {
 	// format the connection string
 	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
 		host, port, user, password, dbname, sslmode)
-		
+
 	// Open the connection pool
 	db, err := sql.Open("postgres", psqlInfo)
 	if err != nil {
@@ -74,4 +76,9 @@ func Migrate(db *sql.DB) error {
 	return err
 }
 
-
+// Save file metadata to the database
+func CreateDocument(db *sql.DB, doc models.Document) error {
+	query := `INSERT INTO documents (title, file_path, uploader_id) VALUES ($1, $2, $3)`
+	_, err := db.Exec(query, doc.Title, doc.FilePath, doc.UploaderID)
+	return err
+}
