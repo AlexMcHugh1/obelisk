@@ -42,6 +42,7 @@ func main() {
 	// Set up Routes
 	// Passing db into the handler allows it to record metadata
 	http.HandleFunc("/upload", handlers.UploadFile(db))
+	http.HandleFunc("/list", handlers.ListFiles(db))
 
 	// Start Server
 	fmt.Println("Obelisk is online. Server starting on :8080...")

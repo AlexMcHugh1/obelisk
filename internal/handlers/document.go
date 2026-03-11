@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -46,5 +47,18 @@ func UploadFile(db *sql.DB) http.HandlerFunc {
 		}
 
 		fmt.Fprintf(w, "Uploaded and indexed: %s", handler.Filename)
+	}
+}
+
+func ListFiles(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		docs, err := database.GetDocuments(db)
+		if err != nil {
+			http.Error(w, "Failed to fetch documents", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(docs)
 	}
 }

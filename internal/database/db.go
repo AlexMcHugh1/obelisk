@@ -82,3 +82,28 @@ func CreateDocument(db *sql.DB, doc models.Document) error {
 	_, err := db.Exec(query, doc.Title, doc.FilePath, doc.UploaderID)
 	return err
 }
+func GetDocuments(db *sql.DB) ([]models.Document, error) {
+	rows, err := db.Query("SELECT id, title, file_path, uploader_id, upload_date FROM documents")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	docs := []models.Document{}
+	for rows.Next() {
+		var d models.Document
+		if err := rows.Scan(&d.ID, &d.Title, &d.FilePath, &d.UploaderID, &d.UploadDate); err != nil {
+			return nil, err
+		}
+		docs = append(docs, d)
+	}
+	return docs, nil
+}
+
+// Find a single document's metadata by its database ID
+func GetDocumentByID(db *sql.DB, id string) (models.Document, error) {
+	var d models.Document
+	query := `SELECT id, title, file_path, uploader_id, upload_date FROM documents WHERE id = $1`
+	err := db.QueryRow(query, id).Scan(&d.ID, &d.Title, &d.FilePath, &d.UploaderID, &d.UploadDate)
+	return d, err
+}
