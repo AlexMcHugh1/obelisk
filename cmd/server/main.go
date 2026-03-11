@@ -43,8 +43,26 @@ func main() {
 	// Passing db into the handler allows it to record metadata
 	http.HandleFunc("/upload", handlers.UploadFile(db))
 	http.HandleFunc("/list", handlers.ListFiles(db))
+	http.HandleFunc("/my-docs", handlers.MyDocumentsHandler(db))
+	http.HandleFunc("/shared-docs", handlers.SharedWithMeHandler(db))
+	http.HandleFunc("/register", handlers.Register(db))
+	http.HandleFunc("/login", handlers.Login(db))
 
 	// Start Server
 	fmt.Println("Obelisk is online. Server starting on :8080...")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	log.Fatal(http.ListenAndServe(":8080", enableCORS(http.DefaultServeMux)))
+
+}
+func enableCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*") // Allow any frontend
+		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }

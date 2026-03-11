@@ -10,11 +10,15 @@ import (
 	"obelisk/internal/models"
 	"os"
 	"path/filepath"
+	"strconv"
 )
 
 func UploadFile(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		r.ParseMultipartForm(10 << 20)
+		userIDStr := r.FormValue("userID")
+		userID, _ := strconv.Atoi(userIDStr)
+
 		file, handler, err := r.FormFile("myFile")
 		if err != nil {
 			http.Error(w, "File not found", http.StatusBadRequest)
@@ -38,7 +42,7 @@ func UploadFile(db *sql.DB) http.HandlerFunc {
 		doc := models.Document{
 			Title:      handler.Filename,
 			FilePath:   dstPath,
-			UploaderID: 1,
+			UploaderID: userID,
 		}
 
 		if err := database.CreateDocument(db, doc); err != nil {
@@ -59,6 +63,53 @@ func ListFiles(db *sql.DB) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(docs)
+	}
+}
+
+func ShareDocument(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		docID := r.URL.Query().Get("doc_id")
+		targetUserID := r.URL.Query().Get("target_user_id")
+
+		if docID == "" || targetUserID == "" {
+			http.Error(w, "Missing doc_id or target_user_id", http.StatusBadRequest)
+			return
+		}
+
+		query := `INSERT INTO shared_access (document_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`
+		_, err := db.Exec(query, docID, targetUserID)
+		if err != nil {
+			http.Error(w, "Failed to share document", http.StatusInternalServerError)
+			return
+		}
+
+		fmt.Fprintf(w, "Document %s shared with user %s", docID, targetUserID)
+	}
+}
+
+// My documents tab
+func MyDocumentsHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID := r.URL.Query().Get("user_id")
+		docs, err := database.GetUserDocuments(db, userID)
+		if err != nil {
+			http.Error(w, "Database error", http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(docs)
+	}
+}
+
+// Shared tab
+func SharedWithMeHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID := r.URL.Query().Get("user_id")
+		docs, err := database.GetSharedWithMeDocuments(db, userID)
+		if err != nil {
+			http.Error(w, "Database error", http.StatusInternalServerError)
+			return
+		}
 		json.NewEncoder(w).Encode(docs)
 	}
 }
