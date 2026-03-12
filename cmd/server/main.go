@@ -52,6 +52,10 @@ func main() {
 	http.HandleFunc("/download", handlers.DownloadFile(db))
 	http.HandleFunc("/share", handlers.ShareDocument(db))
 
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "./index.html")
+	})
+
 	fmt.Println("Obelisk is online. Server starting on :8080...")
 	log.Fatal(http.ListenAndServe(":8080", enableCORS(http.DefaultServeMux)))
 }

@@ -4,17 +4,9 @@ import (
 	"database/sql"
 	"fmt"
 	"obelisk/internal/models"
+	"os"
 
 	_ "github.com/lib/pq"
-)
-
-const (
-	host     = "127.0.0.1"
-	port     = 5432
-	user     = "devuser"
-	password = "devpassword"
-	dbname   = "obelisk"
-	sslmode  = "disable"
 )
 
 // Insert a new user into the database
@@ -26,9 +18,30 @@ func CreateUser(db *sql.DB, user models.User) error {
 
 // Initialise the connection pool and return it for use in main.go
 func InitDB() (*sql.DB, error) {
+	host := os.Getenv("DB_HOST")
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	port := os.Getenv("DB_PORT")
+	if port == "" {
+		port = "5432"
+	}
+	user := os.Getenv("DB_USER")
+	if user == "" {
+		user = "devuser"
+	}
+	password := os.Getenv("DB_PASSWORD")
+	if password == "" {
+		password = "devpassword"
+	}
+	dbname := os.Getenv("DB_NAME")
+	if dbname == "" {
+		dbname = "obelisk"
+	}
+
 	// format the connection string
-	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		host, port, user, password, dbname, sslmode)
+	psqlInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+		host, port, user, password, dbname)
 
 	// Open the connection pool
 	db, err := sql.Open("postgres", psqlInfo)
@@ -49,28 +62,28 @@ func InitDB() (*sql.DB, error) {
 // Create the database tables if they do not exist
 func Migrate(db *sql.DB) error {
 	schema := `
-	CREATE TABLE IF NOT EXISTS users (
-		id SERIAL PRIMARY KEY,
-		username VARCHAR(255) UNIQUE NOT NULL,
-		password_hash TEXT NOT NULL,
-		role VARCHAR(50),
-		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-	);
+    CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        username VARCHAR(255) UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        role VARCHAR(50),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
 
-	CREATE TABLE IF NOT EXISTS documents (
-		id SERIAL PRIMARY KEY,
-		title VARCHAR(255) NOT NULL,
-		file_path TEXT NOT NULL,
-		uploader_id INTEGER REFERENCES users(id),
-		upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-	);
+    CREATE TABLE IF NOT EXISTS documents (
+        id SERIAL PRIMARY KEY,
+        title VARCHAR(255) NOT NULL,
+        file_path TEXT NOT NULL,
+        uploader_id INTEGER REFERENCES users(id),
+        upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
 
-	CREATE TABLE IF NOT EXISTS shared_access (
-		document_id INTEGER REFERENCES documents(id) ON DELETE CASCADE,
-		user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-		shared_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-		PRIMARY KEY (document_id, user_id)
-	);`
+    CREATE TABLE IF NOT EXISTS shared_access (
+        document_id INTEGER REFERENCES documents(id) ON DELETE CASCADE,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        shared_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (document_id, user_id)
+    );`
 
 	_, err := db.Exec(schema)
 	return err
@@ -82,6 +95,7 @@ func CreateDocument(db *sql.DB, doc models.Document) error {
 	_, err := db.Exec(query, doc.Title, doc.FilePath, doc.UploaderID)
 	return err
 }
+
 func GetDocuments(db *sql.DB) ([]models.Document, error) {
 	rows, err := db.Query("SELECT id, title, file_path, uploader_id, upload_date FROM documents")
 	if err != nil {
@@ -117,10 +131,10 @@ func GetUserDocuments(db *sql.DB, userID string) ([]models.Document, error) {
 // Fetch files others shared with this user (Shared Tab)
 func GetSharedWithMeDocuments(db *sql.DB, userID string) ([]models.Document, error) {
 	query := `
-		SELECT d.id, d.title, d.file_path, d.uploader_id, d.upload_date 
-		FROM documents d
-		JOIN shared_access s ON d.id = s.document_id
-		WHERE s.user_id = $1`
+        SELECT d.id, d.title, d.file_path, d.uploader_id, d.upload_date 
+        FROM documents d
+        JOIN shared_access s ON d.id = s.document_id
+        WHERE s.user_id = $1`
 	return queryDocuments(db, query, userID)
 }
 

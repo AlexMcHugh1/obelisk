@@ -11,5 +11,19 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  app:
+    build: .
+    container_name: obelisk_server
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+    environment:
+      - DB_HOST=db # Uses the service name as the hostname
+      - DB_PORT=5432
+      - DB_USER=devuser
+      - DB_PASSWORD=devpassword
+      - DB_NAME=obelisk
+
 volumes:
   postgres_data:
