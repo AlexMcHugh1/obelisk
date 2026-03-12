@@ -54,6 +54,28 @@ func UploadFile(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// Stream the requested PDF back to the client
+func DownloadFile(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.URL.Query().Get("id")
+		if id == "" {
+			http.Error(w, "Missing document ID", http.StatusBadRequest)
+			return
+		}
+
+		// Fetches metadata from the DB to find the physical file path
+		doc, err := database.GetDocumentByID(db, id)
+		if err != nil {
+			http.Error(w, "Document not found", http.StatusNotFound)
+			return
+		}
+
+		// Sets headers to tell the browser it is a file download
+		w.Header().Set("Content-Disposition", "attachment; filename="+doc.Title)
+		http.ServeFile(w, r, doc.FilePath)
+	}
+}
+
 func ListFiles(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		docs, err := database.GetDocuments(db)

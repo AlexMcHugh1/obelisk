@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Obelisk Library</title>
+    <style>
+        :root { --primary: #2563eb; --bg: #f8fafc; --text: #1e293b; --success: #10b981; --danger: #ef4444; }
+        body { font-family: sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .auth-box, .dashboard { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .hidden { display: none; }
+        nav { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; }
+        .tab-btn { padding: 10px 20px; cursor: pointer; border: none; background: none; font-weight: bold; font-size: 1rem; color: #64748b; }
+        .tab-btn.active { color: var(--primary); border-bottom: 2px solid var(--primary); }
+        .file-list { list-style: none; padding: 0; }
+        .file-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #eee; }
+        .file-item:last-child { border-bottom: none; }
+        input, button { padding: 10px; margin: 5px 0; border: 1px solid #ccc; border-radius: 4px; }
+        button { background: var(--primary); color: white; border: none; cursor: pointer; font-weight: 600; }
+        button:hover { opacity: 0.9; }
+        .action-btns { display: flex; gap: 8px; }
+        .download-link { text-decoration: none; color: var(--primary); font-weight: 600; padding: 8px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="auth-section" class="auth-box">
+            <h2>Login to Obelisk</h2>
+            <input type="text" id="username" placeholder="Username" style="width: 100%; box-sizing: border-box;">
+            <input type="password" id="password" placeholder="Password" style="width: 100%; box-sizing: border-box;">
+            <button onclick="login()" style="width: 100%; margin-top: 10px;">Login</button>
+            <p id="auth-error" style="color:var(--danger); font-size: 0.9rem;"></p>
+        </div>
+
+        <div id="dashboard-section" class="dashboard hidden">
+            <header style="display:flex; justify-content:space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="margin: 0;">Welcome, <span id="user-display"></span></h2>
+                <button onclick="logout()" style="background:var(--danger)">Logout</button>
+            </header>
+
+            <div style="margin-bottom: 30px; padding: 20px; background: #f1f5f9; border-radius: 8px;">
+                <h3 style="margin-top: 0;">Upload New PDF</h3>
+                <input type="file" id="file-input" accept=".pdf">
+                <button onclick="uploadFile()">Upload</button>
+            </div>
+
+            <nav>
+                <button class="tab-btn active" id="btn-my" onclick="switchTab('my')">My Documents</button>
+                <button class="tab-btn" id="btn-shared" onclick="switchTab('shared')">Shared With Me</button>
+            </nav>
+
+            <ul id="document-list" class="file-list">
+                </ul>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8080';
+        let currentUser = JSON.parse(localStorage.getItem('obelisk_user'));
+
+        async function login() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            try {
+                const res = await fetch(`${API_BASE}/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    localStorage.setItem('obelisk_user', JSON.stringify(data));
+                    location.reload();
+                } else {
+                    document.getElementById('auth-error').innerText = data.message || 'Login Failed';
+                }
+            } catch (e) {
+                document.getElementById('auth-error').innerText = 'Connection error. Is the server running?';
+                console.error(e);
+            }
+        }
+
+        async function uploadFile() {
+            const fileInput = document.getElementById('file-input');
+            if (!fileInput.files[0]) return alert("Please select a PDF file first.");
+
+            const formData = new FormData();
+            formData.append('myFile', fileInput.files[0]);
+            formData.append('userID', currentUser.user_id);
+
+            try {
+                const res = await fetch(`${API_BASE}/upload`, { method: 'POST', body: formData });
+                if (res.ok) {
+                    alert("Upload successful!");
+                    fileInput.value = ''; // Clear input
+                    switchTab('my');
+                } else {
+                    alert("Upload failed.");
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        async function switchTab(tab) {
+            // Update UI State
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(`btn-${tab}`).classList.add('active');
+            
+            const endpoint = tab === 'my' ? '/my-docs' : '/shared-docs';
+            
+            try {
+                const res = await fetch(`${API_BASE}${endpoint}?user_id=${currentUser.user_id}`);
+                const docs = await res.json();
+                
+                const list = document.getElementById('document-list');
+                list.innerHTML = docs && docs.length ? '' : '<li>No documents found in this section.</li>';
+                
+                if (docs) {
+                    docs.forEach(doc => {
+                        const shareBtn = tab === 'my' 
+                            ? `<button onclick="shareFile(${doc.id})" style="background:var(--success); font-size: 0.8rem;">Share</button>` 
+                            : '';
+
+                        list.innerHTML += `
+                            <li class="file-item">
+                                <span style="font-weight: 500;">${doc.title}</span>
+                                <div class="action-btns">
+                                    <a href="${API_BASE}/download?id=${doc.id}" class="download-link" target="_blank">Download</a>
+                                    ${shareBtn}
+                                </div>
+                            </li>`;
+                    });
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        async function shareFile(docId) {
+            const targetUserId = prompt("Enter the User ID of the person you want to share this with:");
+            if (!targetUserId) return;
+
+            try {
+                const res = await fetch(`${API_BASE}/share?doc_id=${docId}&target_user_id=${targetUserId}`, {
+                    method: 'POST'
+                });
+
+                if (res.ok) {
+                    alert("Document shared successfully!");
+                } else {
+                    alert("Failed to share. Make sure the User ID is correct.");
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        function logout() {
+            localStorage.removeItem('obelisk_user');
+            location.reload();
+        }
+
+        // App Initialization
+        if (currentUser) {
+            document.getElementById('auth-section').classList.add('hidden');
+            document.getElementById('dashboard-section').classList.remove('hidden');
+            document.getElementById('user-display').innerText = currentUser.username;
+            switchTab('my');
+        }
+    </script>
+</body>
+</html>

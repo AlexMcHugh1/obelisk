@@ -37,7 +37,6 @@ func Register(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-// Login verifies credentials and returns the user's ID for the frontend
 func Login(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var creds struct {
@@ -50,23 +49,20 @@ func Login(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Fetch the user from the DB
 		user, err := database.GetUserByUsername(db, creds.Username)
 		if err != nil {
 			http.Error(w, "Invalid username or password", http.StatusUnauthorized)
 			return
 		}
 
-		// Compare the hashes
 		if !auth.CheckPasswordHash(creds.Password, user.PasswordHash) {
 			http.Error(w, "Invalid username or password", http.StatusUnauthorized)
 			return
 		}
 
-		// Return success and user ID
+		// The frontend requires these specific keys
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"message":  "Login successful",
 			"user_id":  user.ID,
 			"username": user.Username,
 		})
