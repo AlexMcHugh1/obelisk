@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: obelisk-db
+  name: db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: obelisk-db
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+
+      labels:
+        app: obelisk-db
+    spec:
+      containers:
+        - env:
+            - name: POSTGRES_DB
+              value: obelisk
+            - name: POSTGRES_PASSWORD
+              value: devpassword
+            - name: POSTGRES_USER
+              value: devuser
+          image: postgres:15-alpine
+          name: postgres
+          ports:
+            - containerPort: 5432
+              protocol: TCP
+          volumeMounts:
+            - mountPath: /var/lib/postgresql/data
+              name: postgres-data
+      restartPolicy: Always
+      volumes:
+        - name: postgres-data
+          persistentVolumeClaim:
+            claimName: postgres-data

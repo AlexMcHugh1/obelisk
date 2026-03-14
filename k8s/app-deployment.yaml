@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: obelisk
+  name: obelisk
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: obelisk
+  template:
+    metadata:
+      labels:
+        app: obelisk
+    spec:
+      containers:
+        - env:
+            - name: DB_HOST
+              value: db
+            - name: DB_NAME
+              value: obelisk
+            - name: DB_PASSWORD
+              value: devpassword
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_USER
+              value: devuser
+            - name: UPLOAD_DIR
+              value: /app/uploads
+          image: docker.io/library/obelisk-server:latest # @AlexMcHugh1: Update this to your image name
+          name: obelisk-server
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+      restartPolicy: Always
