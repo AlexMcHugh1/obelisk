@@ -1,75 +1,73 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net/http"
-	"obelisk/internal/auth"
+	"os"
+	"time"
+
 	"obelisk/internal/database"
 	"obelisk/internal/handlers"
-	"obelisk/internal/models"
+	"obelisk/pkg/helpers"
 )
 
+const addr = ":8080"
+
 func main() {
+	logger := log.Default()
+
 	db, err := database.InitDB()
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatalf("init database: %v", err)
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			logger.Printf("close database: %v", err)
+		}
+	}()
 
 	if err := database.Migrate(db); err != nil {
-		log.Fatalf("Database migration failed: %v", err)
+		logger.Fatalf("migrate database: %v", err)
 	}
 
-	hashedPwd, _ := auth.HashPassword("admin123")
-	testUser := models.User{
-		Username:     "admin",
-		PasswordHash: hashedPwd,
-		Role:         "admin",
-	}
-
-	err = database.CreateUser(db, testUser)
-	if err != nil {
-		fmt.Println("Note: Admin user was not created (likely already exists)")
+	if os.Getenv("UPLOAD_DIR") == "" {
+		os.Setenv("UPLOAD_DIR", "./uploads")
 	} else {
-		fmt.Println("Admin user created successfully!")
+		// Ensure the directory exists
+		if err := os.MkdirAll(os.Getenv("UPLOAD_DIR"), os.ModePerm); err != nil {
+			panic("Failed to create upload directory: " + err.Error())
+		}
+	}
+	helpers.UPLOAD_DIR = os.Getenv("UPLOAD_DIR")
+
+	mux := handlers.NewRouter(db)
+
+	srv := &http.Server{
+		Addr:         addr,
+		Handler:      withCORS(mux),
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
 	}
 
-	rows, _ := db.Query("SELECT id, username FROM users")
-	for rows.Next() {
-		var id int
-		var name string
-		rows.Scan(&id, &name)
-		fmt.Printf("USER ID: %d | USERNAME: %s\n", id, name)
+	logger.Printf("Obelisk listening on %s", addr)
+	if err := srv.ListenAndServe(); err != nil {
+		logger.Fatalf("server stopped: %v", err)
 	}
-
-	http.HandleFunc("/upload", handlers.UploadFile(db))
-	http.HandleFunc("/list", handlers.ListFiles(db))
-	http.HandleFunc("/my-docs", handlers.MyDocumentsHandler(db))
-	http.HandleFunc("/shared-docs", handlers.SharedWithMeHandler(db))
-	http.HandleFunc("/register", handlers.Register(db))
-	http.HandleFunc("/login", handlers.Login(db))
-	http.HandleFunc("/download", handlers.DownloadFile(db))
-	http.HandleFunc("/share", handlers.ShareDocument(db))
-
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "./index.html")
-	})
-
-	fmt.Println("Obelisk is online. Server starting on :8080...")
-	log.Fatal(http.ListenAndServe(":8080", enableCORS(http.DefaultServeMux)))
 }
 
-func enableCORS(next http.Handler) http.Handler {
+func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		headers := w.Header()
+		headers.Set("Access-Control-Allow-Origin", "*")
+		headers.Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		headers.Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
+
 		next.ServeHTTP(w, r)
 	})
 }

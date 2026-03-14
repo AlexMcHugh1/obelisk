@@ -6,11 +6,9 @@ COPY . .
 RUN go build -o main ./cmd/server/main.go
 
 FROM alpine:latest
-WORKDIR /root/
+WORKDIR /app/
 COPY --from=builder /app/main .
-COPY --from=builder /app/index.html .
-COPY --from=builder /app/uploads ./uploads
-RUN mkdir -p ./uploads
+RUN mkdir -p /app/uploads
 
 EXPOSE 8080
 CMD ["./main"]
