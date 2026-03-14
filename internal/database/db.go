@@ -2,164 +2,264 @@ package database
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
-	"obelisk/internal/models"
 	"os"
+	"strconv"
+	"time"
 
-	_ "github.com/lib/pq"
+	"obelisk/internal/models"
+
+	"github.com/lib/pq"
 )
 
-// Insert a new user into the database
+// @AlexMcHugh1: this error is used to indicate that a user
+// with the same username already exists in the database.
+var ErrUserExists = errors.New("user already exists")
+
+const defaultDBPingTimeout = 5 * time.Second
+
 func CreateUser(db *sql.DB, user models.User) error {
-	query := `INSERT INTO users (username, password_hash, role) VALUES ($1, $2, $3)`
+	const query = `
+		INSERT INTO users (username, password_hash, role)
+		VALUES ($1, $2, $3)
+	`
+
 	_, err := db.Exec(query, user.Username, user.PasswordHash, user.Role)
-	return err
+	if err == nil {
+		return nil
+	}
+
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) && pqErr.Code == "23505" {
+		return ErrUserExists
+	}
+
+	return fmt.Errorf("create user %q: %w", user.Username, err)
 }
 
-// Initialise the connection pool and return it for use in main.go
 func InitDB() (*sql.DB, error) {
-	host := os.Getenv("DB_HOST")
-	if host == "" {
-		host = "127.0.0.1"
-	}
-	port := os.Getenv("DB_PORT")
-	if port == "" {
-		port = "5432"
-	}
-	user := os.Getenv("DB_USER")
-	if user == "" {
-		user = "devuser"
-	}
-	password := os.Getenv("DB_PASSWORD")
-	if password == "" {
-		password = "devpassword"
-	}
-	dbname := os.Getenv("DB_NAME")
-	if dbname == "" {
-		dbname = "obelisk"
-	}
+	// @AlexMcHugh1: added the getenv helper function to read database connection
+	// parameters from environment variables,
+	host := getenv("DB_HOST", "127.0.0.1")
+	port := getenv("DB_PORT", "5432")
+	user := getenv("DB_USER", "devuser")
+	password := getenv("DB_PASSWORD", "devpassword")
+	name := getenv("DB_NAME", "obelisk")
 
-	// format the connection string
-	psqlInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		host, port, user, password, dbname)
+	dsn := fmt.Sprintf(
+		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+		host, port, user, password, name,
+	)
 
-	// Open the connection pool
-	db, err := sql.Open("postgres", psqlInfo)
+	db, err := sql.Open("postgres", dsn)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("open database: %w", err)
 	}
 
-	// Verify the connection is active
-	err = db.Ping()
-	if err != nil {
-		return nil, err
+	configurePool(db)
+
+	if err := db.Ping(); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("ping database: %w", err)
 	}
 
-	fmt.Println("Successfully connected to the database")
 	return db, nil
 }
 
-// Create the database tables if they do not exist
 func Migrate(db *sql.DB) error {
-	schema := `
-    CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        username VARCHAR(255) UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        role VARCHAR(50),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
+	const schema = `
+		CREATE TABLE IF NOT EXISTS users (
+			id SERIAL PRIMARY KEY,
+			username VARCHAR(255) UNIQUE NOT NULL,
+			password_hash TEXT NOT NULL,
+			role VARCHAR(50),
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		);
 
-    CREATE TABLE IF NOT EXISTS documents (
-        id SERIAL PRIMARY KEY,
-        title VARCHAR(255) NOT NULL,
-        file_path TEXT NOT NULL,
-        uploader_id INTEGER REFERENCES users(id),
-        upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
+		CREATE TABLE IF NOT EXISTS documents (
+			id SERIAL PRIMARY KEY,
+			title VARCHAR(255) NOT NULL,
+			file_path TEXT NOT NULL,
+			uploader_id INTEGER REFERENCES users(id),
+			upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		);
 
-    CREATE TABLE IF NOT EXISTS shared_access (
-        document_id INTEGER REFERENCES documents(id) ON DELETE CASCADE,
-        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-        shared_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (document_id, user_id)
-    );`
+		CREATE TABLE IF NOT EXISTS shared_access (
+			document_id INTEGER REFERENCES documents(id) ON DELETE CASCADE,
+			user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+			shared_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (document_id, user_id)
+		);
+	`
 
-	_, err := db.Exec(schema)
-	return err
+	if _, err := db.Exec(schema); err != nil {
+		return fmt.Errorf("migrate schema: %w", err)
+	}
+
+	return nil
 }
 
-// Save file metadata to the database
 func CreateDocument(db *sql.DB, doc models.Document) error {
-	query := `INSERT INTO documents (title, file_path, uploader_id) VALUES ($1, $2, $3)`
-	_, err := db.Exec(query, doc.Title, doc.FilePath, doc.UploaderID)
-	return err
+	const query = `
+		INSERT INTO documents (title, file_path, uploader_id)
+		VALUES ($1, $2, $3)
+	`
+
+	if _, err := db.Exec(query, doc.Title, doc.FilePath, doc.UploaderID); err != nil {
+		return fmt.Errorf("create document %q: %w", doc.Title, err)
+	}
+
+	return nil
 }
 
 func GetDocuments(db *sql.DB) ([]models.Document, error) {
-	rows, err := db.Query("SELECT id, title, file_path, uploader_id, upload_date FROM documents")
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
+	const query = `
+		SELECT id, title, file_path, uploader_id, upload_date
+		FROM documents
+		ORDER BY upload_date DESC
+	`
 
-	docs := []models.Document{}
-	for rows.Next() {
-		var d models.Document
-		if err := rows.Scan(&d.ID, &d.Title, &d.FilePath, &d.UploaderID, &d.UploadDate); err != nil {
-			return nil, err
+	return queryDocuments(db, query)
+}
+
+func GetDocumentByID(db *sql.DB, id int) (models.Document, error) {
+	const query = `
+		SELECT id, title, file_path, uploader_id, upload_date
+		FROM documents
+		WHERE id = $1
+	`
+
+	var doc models.Document
+	if err := db.QueryRow(query, id).Scan(
+		&doc.ID,
+		&doc.Title,
+		&doc.FilePath,
+		&doc.UploaderID,
+		&doc.UploadDate,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return models.Document{}, sql.ErrNoRows
 		}
-		docs = append(docs, d)
+		return models.Document{}, fmt.Errorf("get document by id %d: %w", id, err)
 	}
-	return docs, nil
+
+	return doc, nil
 }
 
-// Find a single document's metadata by its database ID
-func GetDocumentByID(db *sql.DB, id string) (models.Document, error) {
-	var d models.Document
-	query := `SELECT id, title, file_path, uploader_id, upload_date FROM documents WHERE id = $1`
-	err := db.QueryRow(query, id).Scan(&d.ID, &d.Title, &d.FilePath, &d.UploaderID, &d.UploadDate)
-	return d, err
-}
+func GetUserDocuments(db *sql.DB, userID int) ([]models.Document, error) {
+	const query = `
+		SELECT id, title, file_path, uploader_id, upload_date
+		FROM documents
+		WHERE uploader_id = $1
+		ORDER BY upload_date DESC
+	`
 
-// Fetch files the user actually uploaded (My Documents)
-func GetUserDocuments(db *sql.DB, userID string) ([]models.Document, error) {
-	query := `SELECT id, title, file_path, uploader_id, upload_date FROM documents WHERE uploader_id = $1`
 	return queryDocuments(db, query, userID)
 }
 
-// Fetch files others shared with this user (Shared Tab)
-func GetSharedWithMeDocuments(db *sql.DB, userID string) ([]models.Document, error) {
-	query := `
-        SELECT d.id, d.title, d.file_path, d.uploader_id, d.upload_date 
-        FROM documents d
-        JOIN shared_access s ON d.id = s.document_id
-        WHERE s.user_id = $1`
+func GetSharedWithMeDocuments(db *sql.DB, userID int) ([]models.Document, error) {
+	const query = `
+		SELECT d.id, d.title, d.file_path, d.uploader_id, d.upload_date
+		FROM documents d
+		INNER JOIN shared_access s ON d.id = s.document_id
+		WHERE s.user_id = $1
+		ORDER BY d.upload_date DESC
+	`
+
 	return queryDocuments(db, query, userID)
 }
 
-func queryDocuments(db *sql.DB, query string, args ...interface{}) ([]models.Document, error) {
+func GetUserByUsername(db *sql.DB, username string) (models.User, error) {
+	const query = `
+		SELECT id, username, password_hash, role
+		FROM users
+		WHERE username = $1
+	`
+
+	var user models.User
+	if err := db.QueryRow(query, username).Scan(
+		&user.ID,
+		&user.Username,
+		&user.PasswordHash,
+		&user.Role,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return models.User{}, sql.ErrNoRows
+		}
+		return models.User{}, fmt.Errorf("get user by username %q: %w", username, err)
+	}
+
+	return user, nil
+}
+
+func queryDocuments(db *sql.DB, query string, args ...any) ([]models.Document, error) {
 	rows, err := db.Query(query, args...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("query documents: %w", err)
 	}
 	defer rows.Close()
 
-	docs := []models.Document{}
+	var docs []models.Document
 	for rows.Next() {
-		var d models.Document
-		if err := rows.Scan(&d.ID, &d.Title, &d.FilePath, &d.UploaderID, &d.UploadDate); err != nil {
-			return nil, err
+		var doc models.Document
+		if err := rows.Scan(
+			&doc.ID,
+			&doc.Title,
+			&doc.FilePath,
+			&doc.UploaderID,
+			&doc.UploadDate,
+		); err != nil {
+			return nil, fmt.Errorf("scan document row: %w", err)
 		}
-		docs = append(docs, d)
+		docs = append(docs, doc)
 	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate document rows: %w", err)
+	}
+
 	return docs, nil
 }
 
-// Find a user in the database by their unique username
-func GetUserByUsername(db *sql.DB, username string) (models.User, error) {
-	var u models.User
-	query := `SELECT id, username, password_hash, role FROM users WHERE username = $1`
-	err := db.QueryRow(query, username).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role)
-	return u, err
+func configurePool(db *sql.DB) {
+	db.SetMaxOpenConns(getenvInt("DB_MAX_OPEN_CONNS", 25))
+	db.SetMaxIdleConns(getenvInt("DB_MAX_IDLE_CONNS", 25))
+	db.SetConnMaxLifetime(getenvDuration("DB_CONN_MAX_LIFETIME", 5*time.Minute))
+	db.SetConnMaxIdleTime(getenvDuration("DB_CONN_MAX_IDLE_TIME", 5*time.Minute))
+}
+
+func getenv(key, fallback string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return fallback
+}
+
+func getenvInt(key string, fallback int) int {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+
+	n, err := strconv.Atoi(value)
+	if err != nil {
+		return fallback
+	}
+
+	return n
+}
+
+func getenvDuration(key string, fallback time.Duration) time.Duration {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+
+	d, err := time.ParseDuration(value)
+	if err != nil {
+		return fallback
+	}
+
+	return d
 }

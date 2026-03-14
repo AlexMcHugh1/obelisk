@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"obelisk/internal/database"
 	"obelisk/internal/models"
+	"obelisk/pkg/helpers"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -26,7 +27,12 @@ func UploadFile(db *sql.DB) http.HandlerFunc {
 		}
 		defer file.Close()
 
-		dstPath := filepath.Join("uploads", handler.Filename)
+		// @AlexMcHugh1: we use the UPLOAD_DIR var from the helpers package
+		// to determine where to save the uploaded files.
+		// This allows us to easily change the upload directory in one place
+		// (like in the Dockerfile or docker-compose.yml)
+		// without having to modify the code.
+		dstPath := filepath.Join(helpers.UPLOAD_DIR, handler.Filename)
 		dst, err := os.Create(dstPath)
 		if err != nil {
 			http.Error(w, "Save failed", http.StatusInternalServerError)
@@ -57,8 +63,12 @@ func UploadFile(db *sql.DB) http.HandlerFunc {
 // Stream the requested PDF back to the client
 func DownloadFile(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		id := r.URL.Query().Get("id")
-		if id == "" {
+		id, err := strconv.Atoi(r.URL.Query().Get("id"))
+		if err != nil {
+			http.Error(w, "Invalid document ID", http.StatusBadRequest)
+			return
+		}
+		if id == 0 {
 			http.Error(w, "Missing document ID", http.StatusBadRequest)
 			return
 		}
@@ -113,7 +123,11 @@ func ShareDocument(db *sql.DB) http.HandlerFunc {
 // My documents tab
 func MyDocumentsHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		userID := r.URL.Query().Get("user_id")
+		userID, err := strconv.Atoi(r.URL.Query().Get("user_id"))
+		if err != nil {
+			http.Error(w, "Invalid user ID", http.StatusBadRequest)
+			return
+		}
 		docs, err := database.GetUserDocuments(db, userID)
 		if err != nil {
 			http.Error(w, "Database error", http.StatusInternalServerError)
@@ -126,7 +140,11 @@ func MyDocumentsHandler(db *sql.DB) http.HandlerFunc {
 // Shared tab
 func SharedWithMeHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		userID := r.URL.Query().Get("user_id")
+		userID, err := strconv.Atoi(r.URL.Query().Get("user_id"))
+		if err != nil {
+			http.Error(w, "Invalid user ID", http.StatusBadRequest)
+			return
+		}
 		docs, err := database.GetSharedWithMeDocuments(db, userID)
 		if err != nil {
 			http.Error(w, "Database error", http.StatusInternalServerError)

@@ -33,3 +33,6 @@ storage/
 
 # Except for a .gitkeep file
 !storage/.gitkeep
+
+
+bin/

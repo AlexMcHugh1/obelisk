@@ -6,8 +6,9 @@ services:
       POSTGRES_USER: devuser
       POSTGRES_PASSWORD: devpassword
       POSTGRES_DB: obelisk
-    ports:
-      - "5432:5432"
+    # ports:
+    #   - "5432:5432" 
+    # @AlexMcHugh1: Expose if you want to connect from outside the Docker network
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
@@ -15,10 +16,11 @@ services:
     build: .
     container_name: obelisk_server
     ports:
-      - "8080:8080"
+      - "9998:8080"
     depends_on:
       - db
     environment:
+      - UPLOAD_DIR=/app/uploads
       - DB_HOST=db # Uses the service name as the hostname
       - DB_PORT=5432
       - DB_USER=devuser

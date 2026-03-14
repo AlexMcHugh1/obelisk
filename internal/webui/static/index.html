@@ -56,7 +56,7 @@
     </div>
 
     <script>
-        const API_BASE = 'http://localhost:8080';
+        const API_BASE = '/api/v1';
         let currentUser = JSON.parse(localStorage.getItem('obelisk_user'));
 
         async function login() {
@@ -107,7 +107,7 @@
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
             document.getElementById(`btn-${tab}`).classList.add('active');
             
-            const endpoint = tab === 'my' ? '/my-docs' : '/shared-docs';
+            const endpoint = tab === 'my' ? '/documents/my' : '/documents/shared';
             
             try {
                 const res = await fetch(`${API_BASE}${endpoint}?user_id=${currentUser.user_id}`);
