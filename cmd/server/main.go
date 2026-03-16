@@ -8,6 +8,7 @@ import (
 	"obelisk/internal/database"
 	"obelisk/internal/handlers"
 	"obelisk/internal/models"
+	"os"
 )
 
 func main() {
@@ -56,8 +57,14 @@ func main() {
 		http.ServeFile(w, r, "./index.html")
 	})
 
-	fmt.Println("Obelisk is online. Server starting on :8080...")
-	log.Fatal(http.ListenAndServe(":8080", enableCORS(http.DefaultServeMux)))
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	addr := ":" + port
+
+	fmt.Printf("Obelisk is online. Server starting on %s...\n", addr)
+	log.Fatal(http.ListenAndServe(addr, enableCORS(http.DefaultServeMux)))
 }
 
 func enableCORS(next http.Handler) http.Handler {

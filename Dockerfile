@@ -12,5 +12,5 @@ COPY --from=builder /app/index.html .
 COPY --from=builder /app/uploads ./uploads
 RUN mkdir -p ./uploads
 
-EXPOSE 8080
+EXPOSE 9090
 CMD ["./main"]
