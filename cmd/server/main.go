@@ -36,14 +36,6 @@ func main() {
 		fmt.Println("Admin user created successfully!")
 	}
 
-	rows, _ := db.Query("SELECT id, username FROM users")
-	for rows.Next() {
-		var id int
-		var name string
-		rows.Scan(&id, &name)
-		fmt.Printf("USER ID: %d | USERNAME: %s\n", id, name)
-	}
-
 	http.HandleFunc("/upload", handlers.UploadFile(db))
 	http.HandleFunc("/list", handlers.ListFiles(db))
 	http.HandleFunc("/my-docs", handlers.MyDocumentsHandler(db))
